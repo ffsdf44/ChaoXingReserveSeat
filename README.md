@@ -2,7 +2,11 @@
 超星图书馆座位预约脚本
 
 （由于部分学校新增了点选式行为验证码导致原本的程序会显示验证失败，详细参见issue21[https://github.com/bear-zd/ChaoXingReserveSeat/issues/21]）
-
+分享链接：https://www.haioukc.com/gs/5b0740badfd741dbb58c3a70f7fc9da0?noKey=Av7fQZRnGNNko86pSkDPZOgo
+提取码：970666
+复制分享链接到浏览器中即可查看文件
+或复制https://www.haioukc.com到浏览器中并输入提取码即可查看文件
+文件过期时间：2026-07-23 07:17:29
 ## 注意
 
 使用python消除了对js的依赖，请拉取最新版程序运行。
