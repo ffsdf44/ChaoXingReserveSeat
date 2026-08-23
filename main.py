@@ -23,15 +23,16 @@ get_current_dayofweek = lambda action: (
 )
 
 
-SLEEPTIME = 0.2  # 每次抢座的间隔
+SLEEPTIME = 2.0  # 每次抢座的间隔
 ENDTIME = "21:01:00"  # 根据学校的预约座位时间+1min即可
 RESERVE_TIME = "21:00:00"  # 北京时间
 PREWARM_LEAD_SECONDS = 20  # 正式预约前多少秒完成运行环境和网络预热
 
 ENABLE_SLIDER = True  # 是否有滑块验证
-MAX_ATTEMPT = 3  # 最大尝试次数
+MAX_ATTEMPT = 2  # 最大尝试次数
 RESERVE_NEXT_DAY = False  # 预约明天而不是今天的
-
+POST_LOGIN_DELAY = 2.0   # 登录成功后等待2秒
+RETRY_INTERVAL = 15.0    # 整批失败后等待15秒
 
 def create_reserve_clients(user_count):
     clients = []
@@ -85,6 +86,10 @@ def login_and_reserve(
                 login_success, _ = s.login(username, password)
                 if not login_success:
                     continue
+                logging.info(
+                f"登录后等待 {POST_LOGIN_DELAY} 秒再预约"
+                )
+                time.sleep(POST_LOGIN_DELAY)
             s.requests.headers.update({"Host": "office.chaoxing.com"})
             suc = s.submit(times, roomid, seatid, action)
             success_list[index] = suc
