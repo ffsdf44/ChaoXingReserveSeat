@@ -295,82 +295,131 @@ class reserve:
             raise ValueError("seatid cannot be empty")
         return normalized
 
-    def submit(self, times, roomid, seatid, action):
+    def submit(
+        self,
+        times,
+        roomid,
+        seatid,
+        action,
+    ):
         seats = self._normalize_seat_ids(seatid)
 
-        # max_attempt means the maximum number of rounds. In every round all
-        # candidate seats are tried once in their configured priority order.
-        for attempt in range(1, self.max_attempt + 1):
-            for seat_index, seat in enumerate(seats):
-                attempt_started_at = time.perf_counter()
-                is_last_try = (
-                    attempt == self.max_attempt and seat_index == len(seats) - 1
-                )
-                logging.info(
-                    f"Round {attempt}/{self.max_attempt}, try seat {seat} "
-                    f"({seat_index + 1}/{len(seats)})"
-                )
-                token, value = self._get_page_token(
-                    self.url.format(roomid, seat), require_value=True
-                )
-                logging.info(f"Get token: {token}")
+        logging.info(
+            f"本次备选座位：{seats}"
+        )
 
-                # An empty page token can never produce a valid reservation.
-                # Skip it immediately instead of spending time on a captcha.
-                if not token or not value:
+        captcha_used = False
+
+        for seat_index, seat in enumerate(seats):
+            logging.info(
+                f"检查座位 {seat}，"
+                f"优先级 {seat_index + 1}/{len(seats)}"
+            )
+
+            # 先获取座位页面token
+            token, value = self._get_page_token(
+                self.url.format(
+                    roomid,
+                    seat,
+                ),
+                require_value=True,
+            )
+
+            logging.info(
+                f"Get token: {token}"
+            )
+
+            # 没有token说明这个座位当前不能提交
+            # 不生成验证码，直接检查下一个座位
+            if not token or not value:
+                logging.warning(
+                    f"座位 {seat} 没有有效token，"
+                    "跳过且不生成验证码"
+                )
+                continue
+
+            captcha = ""
+
+            if self.enable_slider:
+                # 整个任务最多生成一次验证码
+                if captcha_used:
                     logging.warning(
-                        f"Seat {seat} has no valid page token; skip this seat"
+                        "本次任务已经生成过一次验证码，"
+                        "停止继续请求"
                     )
-                    if not is_last_try:
-                        time.sleep(self.sleep_time)
-                    continue
+                    return False
 
-                captcha = self.resolve_captcha() if self.enable_slider else ""
-                logging.info(f"Captcha token {captcha}")
-
-                # Do not send a known-invalid request if captcha solving failed.
-                if self.enable_slider and not captcha:
-                    logging.warning(f"Captcha failed for seat {seat}; skip submit")
-                    if not is_last_try:
-                        time.sleep(self.sleep_time)
-                    continue
-
-                suc = self.get_submit(
-                    self.submit_url,
-                    times=times,
-                    token=token,
-                    roomid=roomid,
-                    seatid=seat,
-                    captcha=captcha,
-                    action=action,
-                    value=value,
-                )
-                if suc:
-                    logging.info(
-                        f"Seat {seat} reserved successfully in "
-                        f"{time.perf_counter() - attempt_started_at:.3f}s"
-                    )
-                    return True
+                captcha_used = True
 
                 logging.info(
-                    f"Seat {seat} attempt finished in "
-                    f"{time.perf_counter() - attempt_started_at:.3f}s"
+                    "开始生成本次任务唯一一次验证码"
                 )
-                if not is_last_try:
-                    time.sleep(self.sleep_time)
+
+                captcha = self.resolve_captcha()
+
+                if not captcha:
+                    logging.warning(
+                        "验证码失败，本次任务停止，"
+                        "不再重新生成验证码"
+                    )
+                    return False
+
+            logging.info(
+                f"Captcha token {captcha}"
+            )
+
+            success = self.get_submit(
+                self.submit_url,
+                times=times,
+                token=token,
+                roomid=roomid,
+                seatid=seat,
+                captcha=captcha,
+                action=action,
+                value=value,
+            )
+
+            if success:
+                logging.info(
+                    f"座位 {seat} 预约成功"
+                )
+                return True
+
+            # 已经提交过一次，直接结束
+            # 不再为其他座位生成第二次验证码
+            logging.info(
+                f"座位 {seat} 本次没有成功，"
+                "为避免重复验证码，本次任务结束"
+            )
+
+            return False
+
+        logging.warning(
+            "所有座位都没有获取到有效token，"
+            "本次没有生成验证码"
+        )
+
         return False
 
     def get_submit(
         self, url, times, token, roomid, seatid, captcha="", action=False, value=""
     ):
-        delta_day = 1 if self.reserve_next_day else 0
-        day = datetime.date.today() + datetime.timedelta(
-            days=0 + delta_day
-        )  # 预约今天，修改days=1表示预约明天
+                # GitHub Actions 使用 UTC，先转换成北京时间日期
         if action:
-            day = datetime.date.today() + datetime.timedelta(
-                days=1 + delta_day
-            )  # 由于action时区问题导致其早+8区一天
+            beijing_now = (
+                datetime.datetime.utcnow()
+                + datetime.timedelta(hours=8)
+            )
+            today = beijing_now.date()
+        else:
+            today = datetime.date.today()
+
+        # False 预约当天，True 预约明天
+        delta_day = 1 if self.reserve_next_day else 0
+
+        day = today + datetime.timedelta(
+            days=delta_day
+        )
         parm = {
             "roomId": roomid,
             "startTime": times[0],
