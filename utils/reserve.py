@@ -308,15 +308,16 @@ class reserve:
             f"本次备选座位：{seats}"
         )
 
-        captcha_used = False
+        captcha_count = 0
+        max_captcha_count = len(seats)
 
+        # 每个座位只尝试一次
         for seat_index, seat in enumerate(seats):
             logging.info(
-                f"检查座位 {seat}，"
-                f"优先级 {seat_index + 1}/{len(seats)}"
+                f"尝试座位 {seat}，"
+                f"进度 {seat_index + 1}/{len(seats)}"
             )
 
-            # 先获取座位页面token
             token, value = self._get_page_token(
                 self.url.format(
                     roomid,
@@ -329,40 +330,55 @@ class reserve:
                 f"Get token: {token}"
             )
 
-            # 没有token说明这个座位当前不能提交
-            # 不生成验证码，直接检查下一个座位
+            # 没有token时不生成验证码
             if not token or not value:
                 logging.warning(
                     f"座位 {seat} 没有有效token，"
                     "跳过且不生成验证码"
                 )
+
+                if seat_index < len(seats) - 1:
+                    logging.info(
+                        f"等待 {self.sleep_time} 秒后"
+                        "检查下一个座位"
+                    )
+                    time.sleep(self.sleep_time)
+
                 continue
 
             captcha = ""
 
             if self.enable_slider:
-                # 整个任务最多生成一次验证码
-                if captcha_used:
+                if captcha_count >= max_captcha_count:
                     logging.warning(
-                        "本次任务已经生成过一次验证码，"
-                        "停止继续请求"
+                        "已达到本轮验证码次数限制，停止"
                     )
-                    return False
+                    break
 
-                captcha_used = True
+                captcha_count += 1
 
                 logging.info(
-                    "开始生成本次任务唯一一次验证码"
+                    f"开始生成第 "
+                    f"{captcha_count}/{max_captcha_count} "
+                    "次验证码"
                 )
 
                 captcha = self.resolve_captcha()
 
+                # 当前验证码失败，等待后尝试下一个座位
                 if not captcha:
                     logging.warning(
-                        "验证码失败，本次任务停止，"
-                        "不再重新生成验证码"
+                        f"座位 {seat} 验证码失败"
                     )
-                    return False
+
+                    if seat_index < len(seats) - 1:
+                        logging.info(
+                            f"等待 {self.sleep_time} 秒后"
+                            "尝试下一个座位"
+                        )
+                        time.sleep(self.sleep_time)
+
+                    continue
 
             logging.info(
                 f"Captcha token {captcha}"
@@ -385,14 +401,25 @@ class reserve:
                 )
                 return True
 
-            # 已经提交过一次，直接结束
-            # 不再为其他座位生成第二次验证码
             logging.info(
-                f"座位 {seat} 本次没有成功，"
-                "为避免重复验证码，本次任务结束"
+                f"座位 {seat} 预约失败"
             )
 
-            return False
+            # 还有下一个座位时才等待
+            if seat_index < len(seats) - 1:
+                logging.info(
+                    f"等待 {self.sleep_time} 秒后"
+                    "尝试下一个座位"
+                )
+                time.sleep(self.sleep_time)
+
+        logging.info(
+            f"三个座位均未成功，"
+            f"本轮共生成 {captcha_count} 次验证码，"
+            "任务结束"
+        )
+
+        return False
 
         logging.warning(
             "所有座位都没有获取到有效token，"
