@@ -25,7 +25,7 @@ get_current_dayofweek = lambda action: (
 
 SLEEPTIME = 0.2  # 每次抢座的间隔
 ENDTIME = "21:01:00"  # 根据学校的预约座位时间+1min即可
-RESERVE_TIME = "8:00:00"  # 北京时间
+RESERVE_TIME = "21:00:00"  # 北京时间
 PREWARM_LEAD_SECONDS = 20  # 正式预约前多少秒完成运行环境和网络预热
 
 ENABLE_SLIDER = True  # 是否有滑块验证
